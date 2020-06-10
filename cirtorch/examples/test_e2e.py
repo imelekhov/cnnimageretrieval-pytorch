@@ -13,7 +13,7 @@ from torchvision import transforms
 from cirtorch.networks.imageretrievalnet import init_network, extract_vectors
 from cirtorch.datasets.testdataset import configdataset
 from cirtorch.utils.download import download_train, download_test
-from cirtorch.utils.evaluate import compute_map_and_print
+from cirtorch.utils.evaluate import compute_map_and_print, compute_map_and_print_top_k
 from cirtorch.utils.general import get_data_root, htime
 
 PRETRAINED = {
@@ -135,7 +135,24 @@ def main():
         # search, rank, and print
         scores = np.dot(vecs.T, qvecs)
         ranks = np.argsort(-scores, axis=0)
+
+        top_k = 100
+        ranks_fnames_qs = []
+        for q_id in range(len(cfg["qimlist"])):
+            ranks_q = list(ranks[:top_k, q_id])
+            ranks_fname_per_q = []
+            for img_id in ranks_q:
+                ranks_fname_per_q.append(cfg["imlist"][img_id])
+            ranks_fnames_qs.append(ranks_fname_per_q)
+
         compute_map_and_print(dataset, ranks, cfg['gnd'])
+        compute_map_and_print_top_k(dataset, ranks_fnames_qs, cfg['gnd'], cfg["imlist"])
+
+
+        sys.exit()
+        with open(dataset + "_gl18_tl_resnet101_gem_w_m.pkl", "wb") as f:
+            data = {"ranks": ranks, "db_images": images, "q_images": qimages}
+            pickle.dump(data, f)
         
         print('>> {}: elapsed time: {}'.format(dataset, htime(time.time()-start)))
 

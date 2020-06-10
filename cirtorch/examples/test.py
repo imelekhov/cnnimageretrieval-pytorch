@@ -15,8 +15,12 @@ from cirtorch.datasets.datahelpers import cid2filename
 from cirtorch.datasets.testdataset import configdataset
 from cirtorch.utils.download import download_train, download_test
 from cirtorch.utils.whiten import whitenlearn, whitenapply
-from cirtorch.utils.evaluate import compute_map_and_print
+from cirtorch.utils.evaluate import compute_map_and_print, compute_map_and_print_top_k
 from cirtorch.utils.general import get_data_root, htime
+
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
 
 PRETRAINED = {
     'retrievalSfM120k-vgg16-gem'        : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/retrievalSfM120k-vgg16-gem-b4dcdc6.pth',
@@ -247,8 +251,23 @@ def main():
         # search, rank, and print
         scores = np.dot(vecs.T, qvecs)
         ranks = np.argsort(-scores, axis=0)
+
+        top_k = -1
+        ranks_fnames_qs = []
+        for q_id in range(len(cfg["qimlist"])):
+            ranks_q = list(ranks[:, q_id]) if top_k == -1 else list(ranks[:top_k, q_id])
+            ranks_fname_per_q = []
+            for img_id in ranks_q:
+                ranks_fname_per_q.append(cfg["imlist"][img_id])
+            ranks_fnames_qs.append(ranks_fname_per_q)
+
         compute_map_and_print(dataset, ranks, cfg['gnd'])
-    
+        compute_map_and_print_top_k(dataset, ranks_fnames_qs, cfg['gnd'], cfg["imlist"])
+
+        with open(dataset + "_topAll_resnet101_sfM120k_gem_ms.pkl", "wb") as f:
+            pickle.dump(ranks_fnames_qs, f)
+
+        sys.exit()
         if Lw is not None:
             # whiten the vectors
             vecs_lw  = whitenapply(vecs, Lw['m'], Lw['P'])

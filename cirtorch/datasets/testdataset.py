@@ -3,6 +3,7 @@ import pickle
 
 DATASETS = ['oxford5k', 'paris6k', 'roxford5k', 'rparis6k']
 
+
 def configdataset(dataset, dir_main):
 
     dataset = dataset.lower()
@@ -31,8 +32,10 @@ def configdataset(dataset, dir_main):
 
     return cfg
 
+
 def config_imname(cfg, i):
     return os.path.join(cfg['dir_images'], cfg['imlist'][i] + cfg['ext'])
+
 
 def config_qimname(cfg, i):
     return os.path.join(cfg['dir_images'], cfg['qimlist'][i] + cfg['qext'])

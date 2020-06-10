@@ -36,6 +36,61 @@ def compute_ap(ranks, nres):
 
     return ap
 
+
+def compute_map_top_k(ranks_fnames_qs, gnd, db_fnames):
+    map = 0.
+    nq = len(gnd)  # number of queries
+    nempty = 0
+
+    for i in np.arange(nq):
+        qgnd = np.array(gnd[i]['ok'])
+
+        # no positive images, skip from the average
+        if qgnd.shape[0] == 0:
+            nempty += 1
+            continue
+
+        try:
+            qgndj = np.array(gnd[i]['junk'])
+        except:
+            qgndj = np.empty(0)
+
+        qgnd_fn, qgndj_fn = [], []
+        for k in qgnd:
+            qgnd_fn.append(db_fnames[int(k)])
+        if qgndj.size > 0:
+            for k in qgndj:
+                qgndj_fn.append(db_fnames[int(k)])
+
+        # sorted positions of positive and junk images (0 based)
+        pos = np.arange(len(ranks_fnames_qs[i]))[np.in1d(ranks_fnames_qs[i], qgnd_fn)]
+        junk = np.arange(len(ranks_fnames_qs[i]))[np.in1d(ranks_fnames_qs[i], qgndj_fn)]
+
+        k = 0;
+        ij = 0;
+        if len(junk):
+            # decrease positions of positives based on the number of
+            # junk images appearing before them
+            ip = 0
+            while (ip < len(pos)):
+                while (ij < len(junk) and pos[ip] > junk[ij]):
+                    k += 1
+                    ij += 1
+                pos[ip] = pos[ip] - k
+                ip += 1
+
+        # compute ap
+        ap = compute_ap(pos, len(qgnd))
+        map = map + ap
+
+        # compute precision @ k
+        pos += 1  # get it to 1-based
+
+    map = map / (nq - nempty)
+
+    return map
+
+
 def compute_map(ranks, gnd, kappas=[]):
     """
     Computes the mAP for a given set of returned results.
@@ -101,7 +156,7 @@ def compute_map(ranks, gnd, kappas=[]):
         # compute precision @ k
         pos += 1 # get it to 1-based
         for j in np.arange(len(kappas)):
-            kq = min(max(pos), kappas[j]); 
+            kq = min(max(pos), kappas[j]);
             prs[i, j] = (pos <= kq).sum() / kq
         pr = pr + prs[i, :]
 
@@ -111,12 +166,50 @@ def compute_map(ranks, gnd, kappas=[]):
     return map, aps, pr, prs
 
 
+def compute_map_and_print_top_k(dataset, ranks_fnames_qs, gnd, db_fnames):
+    # old evaluation protocol
+    if dataset.startswith('oxford5k') or dataset.startswith('paris6k'):
+        mapOld = compute_map_top_k(ranks_fnames_qs, gnd, db_fnames)
+        print('>> {}: mAP: {}'.format(dataset, np.around(mapOld * 100, decimals=2)))
+
+    # new evaluation protocol
+    if dataset.startswith('roxford5k') or dataset.startswith('rparis6k'):
+        gnd_t = []
+        for i in range(len(gnd)):
+            g = {}
+            g['ok'] = np.concatenate([gnd[i]['easy']])
+            g['junk'] = np.concatenate([gnd[i]['junk'], gnd[i]['hard']])
+            gnd_t.append(g)
+        mapE = compute_map_top_k(ranks_fnames_qs, gnd_t, db_fnames)
+
+        gnd_t = []
+        for i in range(len(gnd)):
+            g = {}
+            g['ok'] = np.concatenate([gnd[i]['easy'], gnd[i]['hard']])
+            g['junk'] = np.concatenate([gnd[i]['junk']])
+            gnd_t.append(g)
+        mapM = compute_map_top_k(ranks_fnames_qs, gnd_t, db_fnames)
+
+        gnd_t = []
+        for i in range(len(gnd)):
+            g = {}
+            g['ok'] = np.concatenate([gnd[i]['hard']])
+            g['junk'] = np.concatenate([gnd[i]['junk'], gnd[i]['easy']])
+            gnd_t.append(g)
+        mapH = compute_map_top_k(ranks_fnames_qs, gnd_t, db_fnames)
+
+        print('>> {}: mAP E: {}, M: {}, H: {}'.format(dataset, np.around(mapE * 100, decimals=2),
+                                                      np.around(mapM * 100, decimals=2),
+                                                      np.around(mapH * 100, decimals=2)))
+
+
 def compute_map_and_print(dataset, ranks, gnd, kappas=[1, 5, 10]):
     
     # old evaluation protocol
     if dataset.startswith('oxford5k') or dataset.startswith('paris6k'):
-        map, aps, _, _ = compute_map(ranks, gnd)
-        print('>> {}: mAP {:.2f}'.format(dataset, np.around(map*100, decimals=2)))
+        map, aps, mpr, _ = compute_map(ranks, gnd, kappas=[10])
+        print('>> {}: mAP {:.2f}'.format(dataset, np.around(map * 100, decimals=2)))
+        print('>> {}: mP@10 {}'.format(dataset, np.around(mpr * 100, decimals=2)))
 
     # new evaluation protocol
     elif dataset.startswith('roxford5k') or dataset.startswith('rparis6k'):
