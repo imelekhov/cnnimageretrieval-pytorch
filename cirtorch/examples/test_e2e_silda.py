@@ -29,14 +29,14 @@ PRETRAINED = {
 parser = argparse.ArgumentParser(description='PyTorch CNN Image Retrieval Testing End-to-End')
 
 # test options
-parser.add_argument('--data-path', default='/data/datasets/silda/data/SILDa')
+parser.add_argument('--data-path', default='/data/datasets/SILDa')
 parser.add_argument('--network', '-n', default='gl18-tl-resnet152-gem-w')
 parser.add_argument('--image-size', '-imsize', default=1024, type=int, metavar='N',
                     help="maximum size of longer image side used for testing (default: 1024)")
 parser.add_argument('--multiscale', '-ms', metavar='MULTISCALE', default='[1, 2**(1/2), 1/2**(1/2)]',
                     help="use multiscale vectors for testing, " +
                          " examples: '[1]' | '[1, 1/2**(1/2), 1/2]' | '[1, 2**(1/2), 1/2**(1/2)]' (default: '[1]')")
-parser.add_argument('--top-n', default=50, type=int)
+parser.add_argument('--top-n', default=20, type=int)
 
 # GPU ID
 parser.add_argument('--gpu-id', '-g', default='0', metavar='N',
@@ -107,8 +107,24 @@ def main():
             fnames_q.append(osp.join(img_path, line.strip().split(" ")[0]))
 
     # extract vectors
-    vecs_db = extract_vectors(net, fnames_db, args.image_size, transform, ms=ms)
-    vecs_q = extract_vectors(net, fnames_q, args.image_size, transform, ms=ms)
+    db_vec_fname = osp.join(args.data_path, "db_feat_rad.pkl")
+    q_vec_fname = osp.join(args.data_path, "q_feat_rad.pkl")
+    vecs_db, vecs_q = None, None
+    if osp.isfile(db_vec_fname):
+        with open(db_vec_fname, "rb") as f:
+            vecs_db = pickle.load(f)
+    else:
+        vecs_db = extract_vectors(net, fnames_db, args.image_size, transform, ms=ms)
+        with open(db_vec_fname, "wb") as f:
+            pickle.dump(vecs_db, f)
+
+    if osp.isfile(q_vec_fname):
+        with open(q_vec_fname, "rb") as f:
+            vecs_q = pickle.load(f)
+    else:
+        vecs_q = extract_vectors(net, fnames_q, args.image_size, transform, ms=ms)
+        with open(q_vec_fname, "wb") as f:
+            pickle.dump(vecs_db, f)
 
     print('>> {}: Evaluating...')
 
@@ -129,12 +145,12 @@ def main():
     pairs_db = []
     for q_id in range(len(images_db)):
         img_q = images_db[q_id]
-        pairs_per_q = [" ".join([img_q, images_db[db_id]]) for db_id in list(ranks_db[1:args.top_n+1, q_id])]
+        pairs_per_q = [" ".join([img_q, images_db[db_id]]) for db_id in list(ranks_db[1:args.top_n + 1, q_id])]
         pairs_db += pairs_per_q
 
     for q_id in range(len(images_q)):
         img_q = images_q[q_id]
-        pairs_per_q = [" ".join([img_q, images_db[db_id]]) for db_id in list(ranks_q[1:args.top_n+1, q_id])]
+        pairs_per_q = [" ".join([img_q, images_db[db_id]]) for db_id in list(ranks_q[:args.top_n, q_id])]
         pairs_db += pairs_per_q
 
     with open(osp.join(args.data_path, "image_pairs_silda_top_" + str(args.top_n) + ".txt"), "w") as f:
